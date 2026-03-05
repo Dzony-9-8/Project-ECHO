@@ -1,107 +1,58 @@
-# Project ECHO
+# Project ECHO (v2) - Swarm Intelligence Framework
 
-**ECHO** is a modern, modular, self-optimizing Multi-Agent AI Platform built with Python (FastAPI) and a React (Vite + Tailwind CSS) frontend. It orchestrates a swarm of specialized LLM agents (Supervisor, Developer, Researcher, Critic) that collaborate autonomously to solve complex tasks, powered by a hybrid embedding memory system.
+Project ECHO is a high-performance, multi-agent orchestration framework designed for real-time deep research and development automation. It utilizes a swarm-based architecture where specialized agents (Supervisor, Developer, Researcher, Critic) collaborate through a Unified Agent Communication Protocol (UACP) to solve complex user objectives.
 
-## 🚀 Architecture Overview
+## 🚀 Key Features
 
-ECHO is composed of two primary systems:
+- **Real-Time Streaming (SSE/UACP)**: Instant, token-by-token and state-by-state streaming from the backend to the frontend.
+- **Multi-Agent Hub**: A specialized UI for monitoring and filtering the swarm's internal reasoning process.
+- **Semantic Memory Integration**: Utilizing an `IntelligenceLayer` to store and retrieve past task outcomes and research insights.
+- **Local & Cloud Model Routing**: Dynamic routing between local GGUF models (e.g., Llama 3.1 8B) and high-performance cloud APIs (e.g., DeepSeek R1).
+- **Self-Correcting Swarm**: A Critic Agent evaluates outputs in real-time, triggering recursive iterations if hallucinations or low confidence are detected.
 
-1. **AI Orchestrator (Backend)**
-   - **Language:** Python 3.10+
-   - **Framework:** FastAPI
-   - **Core Engine:** Swarm Protocol (AgentManager, Supervisor, Critic, Specialists)
-   - **Memory:** Hybrid system combining FAISS (vector similarity) and SQLite (structured metadata).
-   - **Models:** Supports both local inference (via GGUF/llama-cpp-python) and cloud endpoints (Ollama / VLLM compatible).
+## 🛠️ Components
 
-2. **Multi-Agent Hub (Frontend)**
-   - **Language:** JavaScript
-   - **Framework:** React + Vite
-   - **Styling:** Tailwind CSS v4
-   - **UI Paradigm:** Multi-Agent Grid tracking parallel thought processes, confidence scores, citations, and semantic memory highlights in real-time.
+### Backend (`/api`, `/ai-orchestrator`)
 
----
+- **FastAPI Core**: High-throughput SSE endpoint for agent execution.
+- **AgentManager**: Orchestrates the multi-agent execution loop and streams states.
+- **IntelligenceLayer**: Vector and structured memory persistence.
+- **Specialist Agents**:
+  - `DevAgent`: Plans and implements code solutions.
+  - `ResearchAgent`: Performs recursive deep research using search tools.
+  - `CriticAgent`: Validates outputs for accuracy and hallucinations.
 
-## 🧠 The Multi-Agent Swarm
+### Frontend (`/ai-ui`)
 
-When a user submits a query to ECHO, it isn't simply passed to an LLM. It goes through a rigorous, self-correcting swarm:
+- **React/Vite Core**: Modern, performant UI with glassmorphism aesthetics.
+- **Agent Toggle Bar**: Allows users to filter specific agent contributions in the chat stream.
+- **Memory Traces**: Visual indicators of when the system utilizes its long-term memory.
+- **Structured Data Cards**: Parsing technical JSON agent outputs into readable UI elements.
 
-- **Supervisor Agent**: The orchestrator. Analyzes the incoming objective, checks past intelligence memory for similar tasks, and routes the work to the appropriate specialist agent.
-- **Developer Agent**: Specializes in code logic. Utilizes tools like `code_search` and `predict_impact` to safely navigate and modify codebases.
-- **Research Agent**: Specializes in deep fact-finding. Utilizes the integrated ECHO `search_tool` and `scrape_tool` to pull live data, verify credibility, and synthesize reports.
-- **Critic Agent**: The gatekeeper. Every specialist output is scrutinized by the global Critic. If a hallucination, logic gap, or syntax error is detected, the Critic issues a `requires_revision` flag, forcing the agent to try again before sending the payload to the user.
-
----
-
-## 🛠 Features Developed
-
-- **Unified Intelligence Memory:** A cross-runtime memory layer that stores problem-solving heuristics. If ECHO solves a complex bug once, it embeds the solution. The next time a similar problem arises, the Supervisor injects the cached strategy.
-- **Tool Abstraction (UACP):** All agents communicate via the *Unified Agent Communication Protocol*, ensuring inputs/outputs between components remain strictly typed and predictable (confidence scores, citations, revision loops).
-- **Stealth / Auto-Launch:** `launch_echo_react.bat` instantly boots the backend and frontend simultaneously, handling port negotiations and auto-launching the web interface.
-- **Performance Aware:** Dynamic offloading of models and active telemetry (CPU/RAM monitoring) ensure the system doesn't crash low-spec hardware during massive parallel swarm operations.
-
----
-
-## ⚙️ Quick Start Installation
+## 📦 Getting Started
 
 ### Prerequisites
 
-- Node.js (v18+)
 - Python 3.10+
-- An LLM GGUF model placed in `ai-orchestrator/models/` (e.g., `llama-3.1-8b.gguf`)
+- Node.js 18+
+- Local LLM models (GGUF format) in `/ai-orchestrator/models/`
 
-### Setup
+### Launching the System
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/Project-ECHO.git
-cd Project-ECHO
-
-# 2. Start both the Backend and Frontend with one click On Windows:
-launch_echo_react.bat
-```
-
-*Alternatively, start them manually:*
-
-**Backend:**
+Use the bundled batch script to launch both the backend and frontend simultaneously:
 
 ```bash
-cd ai-orchestrator
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python ..\api\server.py
+launch_echo.bat
 ```
 
-**Frontend:**
+## 📈 Accomplishments (Phase 37)
 
-```bash
-cd ai-ui
-npm install
-npm run start
-```
+- [x] Converted `/query` to Server-Sent Events (SSE).
+- [x] Implemented `AgentManager.run_stream` for real-time orchestration.
+- [x] Refined `DevAgent` and `ResearchAgent` for UACP compliance.
+- [x] Added Agent visibility toggles to the UI.
+- [x] Implemented rich card rendering for Critic/Dev outputs.
+- [x] Fixed `MemoryAdapter` and `SystemTelemetry` regressions.
 
 ---
-
-## 🏗 Directory Structure
-
-```text
-Project ECHO/
-├── ai-orchestrator/          # Python AI Core
-│   ├── agents/               # Supervisor, Critic, AgentManager
-│   ├── core/                 # Mode controllers, telemetry, router
-│   ├── intelligence/         # Hybrid memory (FAISS/SQLite)
-│   ├── memory/               # Short-term / Session context
-│   ├── runtime/              # Profiles (Developer, Research)
-│   └── tools/                # ECHO web scraping, searching tools
-├── ai-ui/                    # React + Tailwind Frontend
-│   ├── src/components/       # MultiAgentPanel, ChatBubble
-│   └── src/pages/            # Main layout and chat container
-├── api/                      # FastAPI Endpoints (/query)
-└── launch_echo_react.bat     # One-click startup script
-```
-
-## 📜 Future Roadmap
-
-- Real-time token streaming via WebSockets to the UI
-- Advanced semantic trace visualization
-- Deep Seek R1 Cloud API failover routing
+*Built with ❤️ by Project ECHO Development Swarm.*

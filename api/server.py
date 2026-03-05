@@ -70,64 +70,50 @@ async def stream_chat(message: str, voice: bool = False, profile: str = "assista
 @app.post("/query")
 async def query_endpoint(payload: dict):
     """
-    Unified access point for the ECHO frontend.
-    Routes structured payloads to the Supervisor/AgentManager pipeline.
+    Unified streaming access point for the ECHO frontend.
+    Yields structured UACP JSON fragments as the swarm processes the objective.
     """
     user_input = payload.get("user_input")
     task_type = payload.get("task_type", "conversation")
     tags = payload.get("tags", [])
 
     if not user_input:
-        return {"outputs": [{"agent": "system", "output": "Empty input provided.", "confidence": 0.0}]}
+        async def err_gen():
+            yield f"data: {json.dumps({'agent': 'system', 'type': 'error', 'content': 'Empty input'})}\n\n"
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
 
-    try:
-        # Load necessary tools via orchestrator's Intelligence Layer and AgentManager
-        # Using orchestrator to access memory & bg agents
-        from agents.agent_manager import AgentManager
-        from agents.dev_agent import DevAgent
-        from agents.research_agent import ResearchAgent
-        from agents.critic_agent import CriticAgent
-        
-        # Initialize the UACP Tool wrappers
-        from tools.echo_tools.memory_adapter import MemoryAdapter
-        from tools.echo_tools.search_tool import SearchTool
-        from tools.echo_tools.scrape_tool import ScrapeTool
-        from tools.echo_tools.credibility_tool import CredibilityTool
-        
-        mem_adapter = MemoryAdapter(orchestrator.telemetry) # Intelligence layer interface proxy
-
-        # Hardcode test registries for standalone API endpoint execution
-        dev = DevAgent(orchestrator.planner_llm, orchestrator.tools, None)
-        res = ResearchAgent(orchestrator.planner_llm, orchestrator.tools, None) 
-        cri = CriticAgent(orchestrator.planner_llm)
-
-        manager = AgentManager(dev, res, cri, mem_adapter)
-
-        # Run multi-agent pipeline
-        agent_response = manager.run(objective=user_input)
-        
-        # Format response into expected frontend outputs array
-        response_payload = {
-            "outputs": [agent_response]
-        }
-
-        # Handle specific ECHO tools if explicitly requested by frontend mode/task_type
-        if task_type == "search":
-            search_tool = SearchTool(mem_adapter)
-            tool_output = search_tool.execute(user_input)
-            response_payload["tool_output"] = tool_output
+    async def event_generator():
+        try:
+            from agents.agent_manager import AgentManager
+            from swarm.specialists import DevAgent, ResearchAgent
+            from agents.critic_agent import CriticAgent
+            from tools.echo_tools.memory_adapter import MemoryAdapter
+            from intelligence.interface import IntelligenceLayer
             
-        elif task_type == "scrape":
-            scrape_tool = ScrapeTool(mem_adapter)
-            tool_output = scrape_tool.execute(user_input)
-            response_payload["tool_output"] = tool_output
-            
-        return response_payload
+            # Setup Intelligence Layer and Memory Proxy
+            intel = IntelligenceLayer()
+            mem_adapter = MemoryAdapter(intel)
 
-    except Exception as e:
-        import traceback
-        print(f"--- /query ENDPOINT ERROR: {traceback.format_exc()} ---")
-        return {"outputs": [{"agent": "system", "output": f"Backend Error: {str(e)}", "confidence": 0.0}]}
+            # Properly initialize specialists per their correct signatures
+            dev = DevAgent(intel, orchestrator.root_dir, orchestrator.planner_llm)
+            res = ResearchAgent(intel, orchestrator.planner_llm, orchestrator.get_embedder())
+            cri = CriticAgent(orchestrator.planner_llm)
+
+            manager = AgentManager(dev, res, cri, mem_adapter)
+
+            # Stream multi-agent execution
+            async for event in manager.run_stream(user_input):
+                yield f"data: {json.dumps(event)}\n\n"
+                
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            import traceback
+            print(f"--- /query STREAM ERROR: {traceback.format_exc()} ---")
+            yield f"data: {json.dumps({'agent': 'system', 'type': 'error', 'content': f'Backend Error: {str(e)}'})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # -----------------------------------------------------------------
 

@@ -28,3 +28,11 @@ class MemoryAdapter:
                 notes, 
                 meta={"tags": tags, "task_type": task_type, "source": "echo_tool"}
             )
+
+    def record_agent_memory(self, memory_dict: dict):
+        """Standard UACP record hook - proxy to intelligence layer."""
+        return self.memory.record_agent_memory(memory_dict)
+
+    def search_past_insight(self, query: str, top_k: int = 5):
+        """Proxy to underlying intelligence layer."""
+        return self.memory.search_past_insight(query, top_k=top_k)

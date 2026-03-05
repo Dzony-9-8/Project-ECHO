@@ -60,6 +60,58 @@ class AgentManager:
 
         return payload.to_dict()
 
+    import asyncio
+
+    async def run_stream(self, objective: str):
+        """Async generator yielding stream chunks for realtime frontend updates."""
+        print(f"--- AgentManager Stream: Starting Objective: {objective} ---")
+        
+        yield {"agent": "supervisor", "type": "status", "content": "Analyzing optimal execution path..."}
+        
+        # Step 1: Supervisor decides the path
+        # Running synchronous code in thread to prevent blocking
+        import asyncio
+        role = await asyncio.to_thread(self.supervisor.decide, objective)
+        yield {"agent": "supervisor", "type": "status", "content": f"Routed task to specialist: {role}_agent"}
+        
+        specialist = self.dev_agent if role == "dev" else self.research_agent
+        
+        iteration = 0
+        while iteration < self.loop.max_iterations:
+            iteration += 1
+            yield {"agent": f"{role}_agent", "type": "status", "content": f"Executing iteration {iteration}..."}
+            
+            # Specialist Execution
+            payload: UACPPayload = await asyncio.to_thread(specialist.execute, objective)
+            yield {"agent": f"{role}_agent", "type": "payload", "data": payload.to_dict()}
+            
+            # Critic Evaluation
+            yield {"agent": "critic_agent", "type": "status", "content": "Evaluating output for hallucinations and errors..."}
+            critique = await asyncio.to_thread(self.critic_agent.evaluate, payload.to_dict())
+            yield {"agent": "critic_agent", "type": "payload", "data": critique.to_dict()}
+            
+            # Loop Controller Decision
+            decision = self.loop.decide_iteration(iteration, critique.confidence)
+            
+            if decision == "finalize":
+                self._write_memory(payload, success=True)
+                yield {"agent": "system", "type": "status", "content": "Task finalized successfully."}
+                return
+            
+            if decision == "escalate":
+                payload.metadata["escalated"] = True
+                self._write_memory(payload, success=True, tags=["escalated"])
+                yield {"agent": "system", "type": "status", "content": "Escalating task to heavy model."}
+                return
+
+            if decision == "stop":
+                self._write_memory(payload, success=False, failure_type="max_iterations")
+                yield {"agent": "system", "type": "status", "content": "Task stopped (max iterations)."}
+                return
+
+            yield {"agent": "supervisor", "type": "status", "content": f"Revision requested by critic. Restarting task with feedback."}
+            objective = f"REVISION REQUESTED: {critique.analysis}\nOriginal Objective: {objective}"
+
     def _write_memory(self, payload: UACPPayload, success: bool, failure_type=None, tags=None):
         """Writes compressed intelligence to shared memory."""
         intel = MemoryIntelligence(

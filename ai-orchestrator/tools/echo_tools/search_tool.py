@@ -1,4 +1,4 @@
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 from typing import Dict, Any, List
 import time
 from tools.echo_tools.memory_adapter import MemoryAdapter

@@ -60,7 +60,7 @@ class Orchestrator:
         self.model_instances = {} # name -> Llama instance
         self.model_leases = {} # name -> last_used_timestamp
         
-        self.planner_llm = self._get_model_instance("planner", "models/llama-3.1-8b.gguf")
+        self.planner_llm = self._get_model_instance("planner", "ai-orchestrator/models/llama-3.1-8b.gguf")
         self.reasoning_llm = None
         self.coder_llm = None
         self.embed_model = None
@@ -171,13 +171,13 @@ class Orchestrator:
         if route["engine"] == "cloud":
             return DeepSeekR1(api_key=route["api_key"], is_cloud=True)
             
-        self.reasoning_llm = self._get_model_instance("reasoning", "models/deepseek-r1.gguf")
+        self.reasoning_llm = self._get_model_instance("reasoning", "ai-orchestrator/models/deepseek-r1.gguf")
         return DeepSeekR1(self.reasoning_llm)
 
     def get_coder(self):
         route = self.model_router.route("", profile=self.mode_name)
         model_name = "coder"
-        model_path = "models/deepseek-coder.gguf" if route["model"] == "deepseek-coder-v2" else "models/llama-3.1-8b.gguf"
+        model_path = "ai-orchestrator/models/deepseek-coder.gguf" if route["model"] == "deepseek-coder-v2" else "ai-orchestrator/models/llama-3.1-8b.gguf"
         self.coder_llm = self._get_model_instance(model_name, model_path)
         return DeepSeekCoder(self.coder_llm)
 

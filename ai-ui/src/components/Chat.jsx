@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
-import { sendChat } from "../services/api";
+import { sendChatStream } from "../services/api";
 import { exportConversationTxt } from "../utils/exportTxt";
 import { exportConversationPDF } from "../utils/exportPdf";
 import InsightPanel from "./InsightPanel";
 import WeatherPanel from "./WeatherPanel";
+import TypingIndicator from "./TypingIndicator";
 
 export default function Chat() {
     const [messages, setMessages] = useState([]);
@@ -32,6 +33,24 @@ export default function Chat() {
     const [weatherData, setWeatherData] = useState(null);
     const [researchDepth, setResearchDepth] = useState(0);
     const [currentMode, setCurrentMode] = useState("chat");
+    const [hiddenAgents, setHiddenAgents] = useState(new Set());
+
+    // --- AGENT TOGGLE HANDLER ---
+    const toggleAgentVisibility = (agentName) => {
+        setHiddenAgents(prev => {
+            const next = new Set(prev);
+            if (next.has(agentName)) next.delete(agentName);
+            else next.add(agentName);
+            return next;
+        });
+    };
+
+    const agents = [
+        { id: 'supervisor', name: 'Supervisor', color: '#f59e0b', icon: '👑' },
+        { id: 'dev_agent', name: 'Developer', color: '#10b981', icon: '💻' },
+        { id: 'research_agent', name: 'Researcher', color: '#3b82f6', icon: '🔍' },
+        { id: 'critic_agent', name: 'Critic', color: '#8b5cf6', icon: '⚖️' }
+    ];
 
     // DRAG & DROP STATE
     const [attachments, setAttachments] = useState([]); // { type: 'image'|'file', name: str, data: base64/text, preview: str }
@@ -252,32 +271,60 @@ export default function Chat() {
             if (weatherEnabled) tags.push("weather");
             if (deepResearchMode) tags.push("deep_research");
 
-            // STANDARD UACP CHAT PATH via AgentManager
-            const data = await sendChat({
+            // We will keep track of the stream status message index
+            let statusIndex = currentHistory.length; // The index of the placeholder we just added
+
+            await sendChatStream({
                 message: finalMessage,
                 task_type: currentMode,
-                tags: tags
+                tags: tags,
+                onChunk: (chunk) => {
+                    setMessages((prev) => {
+                        const updated = [...prev];
+
+                        if (chunk.type === "status") {
+                            // Update the status placeholder
+                            updated[statusIndex] = {
+                                role: "assistant",
+                                agent: chunk.agent || "system",
+                                content: `*${chunk.content}*`,
+                                isStatus: true
+                            };
+                        } else if (chunk.type === "payload" || chunk.type === "tool_output") {
+                            // A specialist has finished, push their actual bubble
+                            const data = chunk.data || {};
+                            // Insert the actual payload BEFORE the status placeholder
+                            // so the status stays at the bottom while thinking continues
+                            updated.splice(statusIndex, 0, {
+                                role: "assistant",
+                                agent: chunk.agent || "system",
+                                content: data.output || JSON.stringify(data),
+                                confidence: data.confidence,
+                                citations: data.citations,
+                                requiresRevision: data.requires_revision
+                            });
+                            // The status placeholder shifts down, so increment its index known to us
+                            statusIndex++;
+                        } else if (chunk.type === "error") {
+                            updated[statusIndex] = {
+                                role: "assistant",
+                                agent: "system",
+                                content: `[ERROR]: ${chunk.content}`,
+                                isStatus: false
+                            };
+                        }
+
+                        return updated;
+                    });
+                }
             });
 
-            // The backend now returns an array of outputs: { outputs: [{agent, output, confidence, ...}] }
-            const agentOutputs = data.outputs || [];
-
+            // Once the stream finishes successfully, remove the status placeholder
             setMessages((prev) => {
                 const updated = [...prev];
-                // Remove the empty placeholder we added earlier
-                updated.pop();
-
-                // Add an individual bubble for each agent that responded
-                agentOutputs.forEach(out => {
-                    updated.push({
-                        role: "assistant",
-                        agent: out.agent || "system",
-                        content: out.output || "*No text returned*",
-                        confidence: out.confidence,
-                        citations: out.citations,
-                        requiresRevision: out.requires_revision
-                    });
-                });
+                if (updated[statusIndex] && updated[statusIndex].isStatus) {
+                    updated.splice(statusIndex, 1);
+                }
                 return updated;
             });
 
@@ -344,16 +391,44 @@ export default function Chat() {
             )}
 
             <div className="messages">
+                {/* AGENT FILTER BAR */}
+                <div className="agent-toggle-bar" style={{
+                    display: 'flex', gap: '12px', padding: '10px 20px',
+                    background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid #333',
+                    alignItems: 'center', justifyContent: 'center', position: 'sticky', top: 0, zIndex: 5
+                }}>
+                    <span style={{ fontSize: '0.75rem', color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>Filter Swarm:</span>
+                    {agents.map(agent => (
+                        <button
+                            key={agent.id}
+                            onClick={() => toggleAgentVisibility(agent.id)}
+                            className={`agent-toggle-btn ${hiddenAgents.has(agent.id) ? 'hidden' : 'active'}`}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '4px 10px', borderRadius: '20px', border: '1px solid',
+                                borderColor: hiddenAgents.has(agent.id) ? '#444' : agent.color,
+                                background: hiddenAgents.has(agent.id) ? 'transparent' : `${agent.color}15`,
+                                color: hiddenAgents.has(agent.id) ? '#666' : agent.color,
+                                cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.81rem'
+                            }}
+                            title={`Toggle ${agent.name} visibility`}
+                        >
+                            <span>{agent.icon}</span>
+                            <span>{agent.name}</span>
+                        </button>
+                    ))}
+                </div>
+
                 {messages.length === 0 && (
                     <div className="welcome-message">
                         <h2>How can ECHO help you today?</h2>
                     </div>
                 )}
-                {messages.map((m, i) => (
+                {messages.filter(m => !m.agent || !hiddenAgents.has(m.agent)).map((msg, index) => (
                     <MessageBubble
-                        key={i}
-                        {...m}
-                        onSave={(newVal) => handleEdit(i, newVal)}
+                        key={index}
+                        {...msg}
+                        onSave={(newVal) => handleEdit(index, newVal)}
                         onExportAction={handleExport}
                     />
                 ))}
@@ -601,6 +676,20 @@ export default function Chat() {
                     color: white;
                     border: 1px solid #555;
                     border-radius: 4px;
+                }
+
+                /* AGENT TOGGLES */
+                .agent-toggle-btn.hidden {
+                    opacity: 0.5;
+                    filter: grayscale(1);
+                }
+                .agent-toggle-btn.active:hover {
+                    background: rgba(255,255,255,0.05);
+                    transform: translateY(-1px);
+                }
+                .agent-toggle-btn.hidden:hover {
+                    opacity: 0.8;
+                    filter: grayscale(0.5);
                 }
             `}</style>
         </div>

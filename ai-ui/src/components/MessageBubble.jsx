@@ -8,16 +8,29 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 
-export default function MessageBubble({ role, content, onSave, onExportAction, agent, confidence, citations, requiresRevision }) {
+export default function MessageBubble({ role, content, onSave, onExportAction, agent, confidence, citations, requiresRevision, notes_for_memory }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(content);
     const contentRef = useRef(null);
 
+    // TRY TO PARSE JSON CONTENT (For structured agent outputs)
+    let displayContent = content;
+    let structuredData = null;
+
+    if (role === 'assistant' && agent && content.startsWith('{') && content.endsWith('}')) {
+        try {
+            structuredData = JSON.parse(content);
+            displayContent = structuredData.output || structuredData.analysis || content;
+        } catch {
+            // Not valid JSON, fallback to raw
+        }
+    }
+
     // PARSE EXPORT TAGS
     // Looks for [[EXPORT_ACTION: TYPE]] at the end of the message
-    const exportMatch = content.match(/\[\[EXPORT_ACTION:\s*(PDF|TXT)\]\]$/);
+    const exportMatch = displayContent.match(/\[\[EXPORT_ACTION:\s*(PDF|TXT)\]\]$/);
     const exportType = exportMatch ? exportMatch[1] : null;
-    const cleanContent = content.replace(/\[\[EXPORT_ACTION:\s*(PDF|TXT)\]\]$/, '').trim();
+    const cleanContent = displayContent.replace(/\[\[EXPORT_ACTION:\s*(PDF|TXT)\]\]$/, '').trim();
 
     const handleSave = () => {
         onSave(editValue);
@@ -116,6 +129,20 @@ export default function MessageBubble({ role, content, onSave, onExportAction, a
                     </div>
                 ) : (
                     <div className="markdown-content" ref={contentRef}>
+                        {structuredData && (
+                            <div className="agent-data-card" style={{
+                                background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px',
+                                marginBottom: '12px', border: `1px solid ${getAgentColor(agent)}33`
+                            }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '6px', textTransform: 'uppercase' }}>
+                                    {structuredData.agent} Step Output
+                                </div>
+                                <div style={{ fontSize: '0.9rem', color: '#fff', lineHeight: 1.4 }}>
+                                    {structuredData.analysis || "Processing iteration..."}
+                                </div>
+                            </div>
+                        )}
+
                         <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
@@ -148,6 +175,23 @@ export default function MessageBubble({ role, content, onSave, onExportAction, a
                         >
                             {cleanContent}
                         </ReactMarkdown>
+
+                        {/* MEMORY TRACE BLOCK */}
+                        {(notes_for_memory || (structuredData && structuredData.notes_for_memory)) && (
+                            <div className="memory-trace" style={{
+                                marginTop: '16px', padding: '10px 14px', background: 'rgba(59, 130, 246, 0.05)',
+                                borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)',
+                                display: 'flex', flexDirection: 'column', gap: '4px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                                    <span>🧠</span>
+                                    <span>SEMANTIC MEMORY LOGGED</span>
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: '#93c5fd', fontStyle: 'italic' }}>
+                                    "{notes_for_memory || structuredData.notes_for_memory}"
+                                </div>
+                            </div>
+                        )}
 
                         {/* CITATIONS BLOCK */}
                         {citations && citations.length > 0 && (
