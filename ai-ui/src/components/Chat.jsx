@@ -234,6 +234,9 @@ export default function Chat() {
             setAttachments([]); // Clear attachments
         }
 
+        // A unique ID for the current stream's status bubble (declared here so catch can access it)
+        let placeholderId = null;
+
         try {
             // DEEP RESEARCH PATH — only available in Electron mode
             if (deepResearchMode && window.electronAPI) {
@@ -278,8 +281,8 @@ export default function Chat() {
             if (weatherEnabled) tags.push("weather");
             if (deepResearchMode) tags.push("deep_research");
 
-            // Add a unique placeholder for the current stream's status
-            const placeholderId = `status-${Date.now()}`;
+            // Set placeholder and show it
+            placeholderId = `status-${Date.now()}`;
             setMessages(prev => [...prev, {
                 id: placeholderId,
                 role: "assistant",
@@ -336,10 +339,20 @@ export default function Chat() {
             isSending.current = false;
         } catch (error) {
             console.error("Chat Error:", error);
+            const isOffline = error.message === "Failed to fetch";
+            const errMsg = isOffline
+                ? "⚠️ **Cannot reach the ECHO backend.** Make sure the server is running (`ECHO.bat` or `uvicorn api.server:app`)."
+                : `**Error:** ${error.message}`;
+            // Update placeholder to show the error, or append a new error bubble
             setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1].content = `[ERROR]: ${error.message}`;
-                return updated;
+                const withErr = prev.map(m =>
+                    m.id === placeholderId ? { ...m, content: errMsg, isStatus: false } : m
+                );
+                // If placeholder wasn't found, append a new error bubble
+                if (!withErr.some(m => m.id === placeholderId)) {
+                    return [...withErr, { id: `err-${Date.now()}`, role: "assistant", agent: "system", content: errMsg }];
+                }
+                return withErr;
             });
             setLoading(false);
             isSending.current = false;
@@ -366,62 +379,36 @@ export default function Chat() {
                 </div>
             )}
 
-            {/* INSIGHT TOGGLE */}
-            <button
-                className="insight-toggle-btn"
-                onClick={() => setShowInsight(!showInsight)}
-                title="View Session Insights"
-            >
-                🧠
-            </button>
 
-            {showInsight && (
-                <InsightPanel
-                    sessionId={sessionId}
-                    onClose={() => setShowInsight(false)}
-                    onLoaded={setLatestInsight}
-                />
-            )}
 
-            {weatherData && (
-                <WeatherPanel
-                    location={weatherData.location}
-                    current={weatherData.current}
-                    forecast={weatherData.forecast}
-                    onClose={() => setWeatherData(null)}
-                />
-            )}
-
-            <div className="agent-toggle-bar" style={{
-                display: 'flex', gap: '10px', padding: '12px 20px',
-                background: 'rgba(15, 15, 15, 0.95)', borderBottom: '1px solid #333',
-                alignItems: 'center', justifyContent: 'flex-start',
-                flexWrap: 'wrap', backdropFilter: 'blur(10px)', boxSizing: 'border-box', width: '100%',
-                flexShrink: 0, zIndex: 100, overflow: 'hidden'
+            {/* FILTER SWARM BAR */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 20px',
+                background: '#111', borderBottom: '1px solid #2a2a2a',
+                flexWrap: 'wrap', boxSizing: 'border-box', width: '100%', flexShrink: 0
             }}>
-                <span style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold', whiteSpace: 'nowrap', marginRight: '6px', flexShrink: 0 }}>Filter Swarm:</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', flex: '1 1 auto' }}>
-                    {agents.map(agent => (
+                <span style={{ fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>Filter Swarm:</span>
+                {agents.map(agent => {
+                    const isHidden = hiddenAgents.has(agent.id);
+                    return (
                         <button
                             key={agent.id}
                             onClick={() => toggleAgentVisibility(agent.id)}
-                            className={`agent-toggle-btn ${hiddenAgents.has(agent.id) ? 'hidden' : 'active'}`}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                padding: '6px 12px', borderRadius: '20px', border: '1px solid',
-                                borderColor: hiddenAgents.has(agent.id) ? '#444' : agent.color,
-                                background: hiddenAgents.has(agent.id) ? 'transparent' : `${agent.color}15`,
-                                color: hiddenAgents.has(agent.id) ? '#666' : agent.color,
-                                cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.81rem',
-                                whiteSpace: 'nowrap', flexShrink: 0
-                            }}
                             title={`Toggle ${agent.name} visibility`}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                padding: '3px 10px', border: `1px solid ${isHidden ? '#333' : agent.color}`,
+                                borderRadius: '6px', background: isHidden ? 'transparent' : `${agent.color}20`,
+                                color: isHidden ? '#444' : agent.color, cursor: 'pointer',
+                                fontSize: '0.78rem', fontWeight: 500, whiteSpace: 'nowrap',
+                                transition: 'all 0.15s', flexShrink: 0
+                            }}
                         >
-                            <span>{agent.icon}</span>
-                            <span>{agent.name}</span>
+                            <span style={{ fontSize: '0.85rem' }}>{agent.icon}</span>
+                            {agent.name}
                         </button>
-                    ))}
-                </div>
+                    );
+                })}
             </div>
 
             <div className="messages">
@@ -520,6 +507,15 @@ export default function Chat() {
                             ⛅
                         </button>
 
+                        {/* INSIGHT BUTTON — moved from floating position into toolbar */}
+                        <button
+                            className={`control-btn ${showInsight ? 'active-rag' : ''}`}
+                            onClick={() => setShowInsight(!showInsight)}
+                            title="View Session Insights"
+                        >
+                            💡
+                        </button>
+
                         <div className="depth-slider" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px', fontSize: '0.8rem', color: '#ccc' }}>
                             <span title="Autonomous Research Depth">🧬 Depth: {researchDepth}</span>
                             <input
@@ -561,6 +557,25 @@ export default function Chat() {
                     </button>
                 </div>
             </div>
+
+            {/* INSIGHT PANEL (portal-like, opens above input) */}
+            {showInsight && (
+                <InsightPanel
+                    sessionId={sessionId}
+                    onClose={() => setShowInsight(false)}
+                    onLoaded={setLatestInsight}
+                />
+            )}
+
+            {/* WEATHER PANEL */}
+            {weatherData && (
+                <WeatherPanel
+                    location={weatherData.location}
+                    current={weatherData.current}
+                    forecast={weatherData.forecast}
+                    onClose={() => setWeatherData(null)}
+                />
+            )}
 
             <style>{`
                 .drag-active {
