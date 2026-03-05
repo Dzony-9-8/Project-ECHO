@@ -30,13 +30,16 @@ Respond ONLY in valid JSON format:
 
         try:
             if hasattr(self.model, "create_chat_completion"):
-                response = self.model.create_chat_completion(
-                    messages=[{"role": "user", "content": prompt}]
+                # Bypass create_chat_completion as some GGUFs lack chat templates
+                # which causes a "dict object has no attribute value" crash inside llama_cpp.
+                prompt += "\n\n```json\n{"
+                response = self.model(
+                    prompt, 
+                    max_tokens=256, 
+                    stop=["```", "}"]
                 )
-                raw_json = response["choices"][0]["message"]["content"]
-                # Clean markdown blocks if present
-                clean_json = raw_json.replace("```json", "").replace("```", "").strip()
-                result = json.loads(clean_json)
+                raw_json = "{" + response["choices"][0]["text"].strip() + "}"
+                result = json.loads(raw_json)
                 score = float(result.get("score", 0.5))
                 analysis = result.get("analysis", "No analysis provided.")
             else:

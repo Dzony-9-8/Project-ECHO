@@ -80,7 +80,16 @@ class DeveloperCore:
             prompt = f"Create a detailed implementation plan for: {objective}. \nIMPORTANT: Include 'CONFIDENCE: X.XX' at the end."
             draft_plan = local_model.run(prompt)
         else:
-            raw_res = local_model(f"Create a detailed plan for: {objective} \nCONFIDENCE: 0.8", max_tokens=512)
+            prompt = (
+                f"Q: Create a detailed short plan for: {objective}\n"
+                f"Important: Include 'CONFIDENCE: X.XX' at the end.\n"
+                f"A: "
+            )
+            raw_res = local_model(
+                prompt, 
+                max_tokens=512, 
+                stop=["Q:", "User:", "\n\n\n"]
+            )
             if isinstance(raw_res, dict) and raw_res.get("choices"):
                 draft_plan = raw_res["choices"][0].get("text", "").strip()
             else:
